@@ -23,6 +23,19 @@ namespace chip8
 			}
 			virtual const char *what() const noexcept {return message.c_str();}
 	};
+	class FileNotFoundError: public exception
+	{
+		uint16_t pc, instruction;
+		string message;
+		public:
+			FileNotFoundError(string filename) noexcept
+			{
+				stringstream stream;
+				stream << "Unable to open " << filename;
+				message = stream.str();
+			}
+			virtual const char *what() const noexcept {return message.c_str();}
+	};
 	Emulator::Emulator(function<bool(uint8_t)> key_pressed, function<uint8_t()> get_key, function<void()> play_sound, bool debug): pc(0x200), gen(rd()), distrib(0, 255), key_pressed(key_pressed), get_key(get_key), play_sound(play_sound), last_dt_tick(chrono::steady_clock::now()), last_st_tick(chrono::steady_clock::now()), debug(debug)
 	{
 		for(int y = 0; y < 32; y++)
@@ -30,6 +43,26 @@ namespace chip8
 			for(int x = 0; x < 64; x++)
 				screen.at(y).at(x) = false;
 		}
+		vector<uint8_t> font = {
+			0xF0, 0x90, 0x90, 0x90, 0xF0,
+			0x20, 0x60, 0x20, 0x20, 0x70,
+			0xF0, 0x10, 0xF0, 0x80, 0xF0,
+			0xF0, 0x10, 0xF0, 0x10, 0xF0,
+			0x90, 0x90, 0xF0, 0x10, 0x10, 
+			0xF0, 0x80, 0xF0, 0x10, 0xF0,
+			0xF0, 0x80, 0xF0, 0x90, 0xF0,
+			0xF0, 0x10, 0x20, 0x40, 0x40,
+			0xF0, 0x90, 0xF0, 0x90, 0xF0,
+			0xF0, 0x90, 0xF0, 0x10, 0xF0,
+			0xF0, 0x90, 0xF0, 0x90, 0x90,
+			0xE0, 0x90, 0xE0, 0x90, 0xE0,
+			0xF0, 0x80, 0x80, 0x80, 0xF0,
+			0xE0, 0x90, 0x90, 0x90, 0xE0,
+			0xF0, 0x80, 0xF0, 0x80, 0xF0,
+			0xF0, 0x80, 0xF0, 0x80, 0x80
+		};
+		for(int x = 0; x < 80; x++)
+			memory.at(x) = font.at(x);
 	}
 	uint8_t Emulator::read8(uint16_t address) {return memory.at(address);}
 	uint16_t Emulator::read16(uint16_t address) {return memory.at(address) * 256 + memory.at(address + 1);}
@@ -38,6 +71,8 @@ namespace chip8
 	void Emulator::load(string filename)
 	{
 		ifstream rom(filename, ios::binary);
+		if(!rom.is_open())
+			throw FileNotFoundError(filename);
 		rom.read(reinterpret_cast<char *>(memory.data()) + 0x200, 0x1000 - 0x200);
 	}
 	void Emulator::step()
@@ -45,15 +80,15 @@ namespace chip8
 		int since_last_dt_tick = chrono::duration_cast<chrono::microseconds>(chrono::steady_clock::now() - last_dt_tick).count();
 		int since_last_st_tick = chrono::duration_cast<chrono::microseconds>(chrono::steady_clock::now() - last_st_tick).count();
 		//cout << since_last_dt_tick << " " << int(dt) << endl;
-		if(since_last_dt_tick > 16 && dt > 0)
+		if(since_last_dt_tick >= 16667 && dt > 0)
 		{
-			dt = max(0, dt - since_last_dt_tick / 16);
+			dt--;// = max(0, dt - since_last_dt_tick / 16667);
 			//cout << since_last_dt_tick << " " << int(dt) << endl;
 			last_dt_tick = chrono::steady_clock::now();
 		}
-		if(since_last_st_tick > 16 && st > 0)
+		if(since_last_st_tick >= 16667 && st > 0)
 		{
-			st = max(0, st - since_last_st_tick / 16);
+			st--;// = max(0, st - since_last_st_tick / 16667);
 			last_st_tick = chrono::steady_clock::now();
 			play_sound();
 		}
@@ -61,14 +96,14 @@ namespace chip8
 		if(debug)
 		{
 			cout << "PC: " << setw(4) << setfill('0') << right << hex << pc << " M[PC]: " << setw(4) << setfill('0') << right << hex << instruction << " I: " << setw(4) << setfill('0') << right << hex << i << endl;
-			for(int m = 0; m < 16; m += 4)
+			for(int y = 0; y < 16; y += 4)
 			{
-				cout << "V" << hex << m << "-" << hex << (m + 3) << ": ";
-				for(int n = 0; n < 4; n++)
-					cout << setw(4) << setfill('0') << right << hex << int(v.at(m + n)) << " ";
+				cout << "V" << hex << y << "-" << hex << (y + 3) << ": ";
+				for(int x = 0; x < 4; x++)
+					cout << setw(4) << setfill('0') << right << hex << int(v.at(y + x)) << " ";
 				cout << endl;
 			}
-			getchar();
+			//getchar();
 		}
 		pc += 2;
 		uint8_t &vx = v.at(instruction >> 8 & 0xF);
@@ -91,7 +126,8 @@ namespace chip8
 						break;
 					case 0xEE:
 						// RET
-						pc = stack.at(sp--);
+						pc = call_stack.top();
+						call_stack.pop();
 						break;
 					default:
 						throw InvalidInstructionError(pc - 2, instruction);
@@ -103,7 +139,7 @@ namespace chip8
 				break;
 			case 2:
 				// CALL addr
-				stack.at(++sp) = pc;
+				call_stack.push(pc);
 				pc = addr;
 				break;
 			case 3:

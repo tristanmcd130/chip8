@@ -1,5 +1,6 @@
 #include <array>
 #include <cstdint>
+#include <stack>
 #include <functional>
 #include <random>
 #include <chrono>
@@ -13,8 +14,8 @@ namespace chip8
 		array<uint8_t, 4096> memory;
 		array<uint8_t, 16> v;
 		uint16_t i, pc;
-		uint8_t dt, st, sp;
-		array<uint16_t, 16> stack;
+		uint8_t dt, st;
+		stack<uint16_t> call_stack;
 		array<array<bool, 64>, 32> screen;
 		random_device rd;
 		mt19937 gen;

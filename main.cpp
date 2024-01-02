@@ -94,8 +94,7 @@ int main(int argc, char *argv[])
 	sf::SoundBuffer buffer;
 	buffer.loadFromSamples(&samples[0], samples.size(), 1, 44100);
 	sound.setBuffer(buffer);
-	sf::RenderWindow window(sf::VideoMode(64, 32), "Chip-8");
-	sf::Clock clock;
+	sf::RenderWindow window(sf::VideoMode(640, 320), "Chip-8");
 	while(window.isOpen())
 	{
 		sf::Event event;
@@ -104,9 +103,7 @@ int main(int argc, char *argv[])
 			if(event.type == sf::Event::Closed)
 				window.close();
 		}
-		clock.restart();
-		while(clock.getElapsedTime().asMicroseconds() < 16667)
-			emulator.step();
+		emulator.step();
 		sf::Image image;
 		image.create(64, 32);
 		auto screen = emulator.get_screen();
@@ -120,6 +117,7 @@ int main(int argc, char *argv[])
 		texture.update(image);
 		sf::Sprite sprite;
 		sprite.setTexture(texture);
+		sprite.setScale(10, 10);
 		window.draw(sprite);
 		window.display();
 	}
